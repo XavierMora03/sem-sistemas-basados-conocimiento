@@ -21,7 +21,7 @@ CREATE TABLE pacientes (
     fecha_nacimiento DATE,
     genero VARCHAR(10),
     direccion VARCHAR(150),
-    telefono VARCHAR(20)
+    telefono VARCHAR(20) UNIQUE
 );
 
 -- Create table for Diseases
