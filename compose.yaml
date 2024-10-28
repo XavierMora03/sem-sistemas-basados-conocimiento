@@ -2,7 +2,7 @@ volumes:
   psql:
 services:
   psql:
-    build: postgres:17.0
+    image: postgres:17.0
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: example
