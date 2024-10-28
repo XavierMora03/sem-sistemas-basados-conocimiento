@@ -356,7 +356,7 @@ def abrir_ventana_signos():
     entry_buscar.grid(row=0, column=2, padx=10, pady=10)
 
 
-def verificar_credenciales(entry_correo, entry_contraseña, ventana_login):
+def verificar_credenciales(entry_correo, entry_contraseña, ventana_login,ventana_principal):
     correo = entry_correo.get()
     contraseña = entry_contraseña.get()
     
@@ -376,13 +376,14 @@ def verificar_credenciales(entry_correo, entry_contraseña, ventana_login):
         consulta = sql.SQL("SELECT rol FROM usuarios WHERE correo = %s AND contraseña = %s")
         cursor.execute(consulta, (correo, contraseña))
         resultado = cursor.fetchone()
-        
+        resultado = ['Administrador'] # Eliminar esta línea para probar el login con la base de datos
         if resultado:
             rol = resultado[0]
             messagebox.showinfo("Login exitoso", f"Bienvenido, {rol}")
             cursor.close()
             conexion.close()
             ventana_login.destroy()
+            ventana_principal.deiconify()
             return 0
             
             # Aquí podrías abrir la ventana específica del rol
@@ -396,7 +397,7 @@ def verificar_credenciales(entry_correo, entry_contraseña, ventana_login):
     except Exception as e:
         messagebox.showerror("Error de conexión", f"No se pudo conectar a la base de datos: {e}")
 
-def abrir_ventana_login():
+def abrir_ventana_login(ventana_principal):
     ventana_login = tk.Toplevel()
     ventana_login.title("Login")
     ventana_login.geometry("300x200")
@@ -417,7 +418,7 @@ def abrir_ventana_login():
     entry_contraseña.grid(row=1, column=1, padx=10, pady=10)
     
     # Botón de login
-    boton_login = tk.Button(ventana_login, text="Iniciar sesión", command=lambda: verificar_credenciales(entry_correo, entry_contraseña,ventana_login), bg="#4CAF50", fg="white", font=("Arial", 10, "bold"))
+    boton_login = tk.Button(ventana_login, text="Iniciar sesión", command=lambda: verificar_credenciales(entry_correo, entry_contraseña,ventana_login,ventana_principal), bg="#4CAF50", fg="white", font=("Arial", 10, "bold"))
     boton_login.pack(pady=10)
     
     ventana_login.mainloop()
@@ -591,5 +592,5 @@ def configurar_frame_botones(ventana):
 
 ventana = configurar_ventana_principal()
 ventana.withdraw()
-abrir_ventana_login()
+abrir_ventana_login(ventana)
 ventana.mainloop()
