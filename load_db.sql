@@ -72,6 +72,7 @@ CREATE TABLE historial_medico (
 INSERT INTO usuarios (nombre, correo, rol, contraseña) VALUES
 ('Administrador 1', 'admin1@hospital.com', 'administrador', 'admin123'),
 ('Administrador 2', 'admin2@hospital.com', 'administrador', 'admin123'),
+('Administrador 3', 'test', 'administrador', 'test'),
 ('Dr. Juan Pérez', 'juan.perez@hospital.com', 'medico', 'medico123'),
 ('Dr. Ana Gómez', 'ana.gomez@hospital.com', 'medico', 'medico123');
 
