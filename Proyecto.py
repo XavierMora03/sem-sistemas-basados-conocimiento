@@ -376,7 +376,6 @@ def verificar_credenciales(entry_correo, entry_contraseña, ventana_login,ventan
         consulta = sql.SQL("SELECT rol FROM usuarios WHERE correo = %s AND contraseña = %s")
         cursor.execute(consulta, (correo, contraseña))
         resultado = cursor.fetchone()
-        resultado = ['Administrador'] # Eliminar esta línea para probar el login con la base de datos
         if resultado:
             rol = resultado[0]
             messagebox.showinfo("Login exitoso", f"Bienvenido, {rol}")
