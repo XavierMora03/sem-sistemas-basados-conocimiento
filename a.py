@@ -65,7 +65,7 @@ class CRUDApp:
         tk.Button(frame, text="Pacientes", command=self.manage_patients).pack(side=tk.LEFT)
         tk.Button(frame, text="Enfermedades", command=self.manage_diseases).pack(side=tk.LEFT)
         tk.Button(frame, text="Médicos", command=self.manage_medicos).pack(side=tk.LEFT)
-
+        tk.Button(frame, text="Pacientes", command=self.manage_patients).pack(side=tk.LEFT)
 
         # Display frame
         self.display_frame = tk.Frame(root)
@@ -583,6 +583,195 @@ class CRUDApp:
                     messagebox.showerror("Error", f"No se pudo eliminar el médico: {str(e)}")
                     conn.close()
 
+
+    def manage_patients(self):
+        self.clear_frame()
+        tk.Label(self.display_frame, text="Gestión de Pacientes", font=("Arial", 16)).pack(pady=10)
+
+        conn = connect_db()
+        if conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute("SELECT id, nombre, fecha_nacimiento, genero, direccion, telefono FROM pacientes")
+                pacientes = cursor.fetchall()
+
+                for paciente in pacientes:
+                    paciente_frame = tk.Frame(self.display_frame, borderwidth=1, relief=tk.SOLID)
+                    paciente_frame.pack(fill=tk.X, padx=10, pady=5)
+
+                    paciente_info = (
+                        f"ID: {paciente[0]}, Nombre: {paciente[1]}, "
+                        f"Fecha de Nacimiento: {paciente[2]}, Género: {paciente[3]}, "
+                        f"Dirección: {paciente[4]}, Teléfono: {paciente[5]}"
+                    )
+                    tk.Label(paciente_frame, text=paciente_info, anchor="w").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+
+                    tk.Button(paciente_frame, text="Editar", command=lambda p=paciente: self.edit_patient(p)).pack(side=tk.RIGHT, padx=5)
+                    tk.Button(paciente_frame, text="Eliminar", command=lambda p=paciente: self.delete_patient(p[0])).pack(side=tk.RIGHT)
+
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo obtener la lista de pacientes: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+
+        tk.Button(self.display_frame, text="Añadir Paciente", command=self.add_patient).pack(pady=10)
+
+    def add_patient(self):
+        add_patient_window = tk.Toplevel(self.root)
+        add_patient_window.title("Añadir Paciente")
+        add_patient_window.grab_set()  # Modal
+
+        fields = [
+            ("Nombre", 0),
+            ("Fecha de Nacimiento (YYYY-MM-DD)", 1),
+            ("Género", 2),
+            ("Dirección", 3),
+            ("Teléfono", 4)
+        ]
+
+        entries = {}
+        for label_text, row in fields:
+            tk.Label(add_patient_window, text=label_text).grid(row=row, column=0, padx=10, pady=5, sticky=tk.E)
+            if label_text == "Género":
+                gender_var = tk.StringVar(add_patient_window)
+                gender_var.set("Masculino")
+                gender_dropdown = tk.OptionMenu(add_patient_window, gender_var, "Masculino", "Femenino", "Otro")
+                gender_dropdown.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["genero"] = gender_var
+            else:
+                entry = tk.Entry(add_patient_window)
+                entry.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                key = label_text.split(" ")[0].lower()
+                entries[key] = entry
+
+        tk.Button(
+            add_patient_window,
+            text="Guardar",
+            command=lambda: self.save_patient(entries, add_patient_window)
+        ).grid(row=len(fields), columnspan=2, pady=10)
+
+    def save_patient(self, entries, window):
+        nombre = entries["nombre"].get().strip()
+        fecha_nacimiento = entries["fecha"].get().strip()
+        genero = entries["genero"].get()
+        direccion = entries["dirección"].get().strip()
+        telefono = entries["teléfono"].get().strip()
+
+        if not all([nombre, fecha_nacimiento, genero, direccion, telefono]):
+            messagebox.showwarning("Datos Faltantes", "Por favor, completa todos los campos.")
+            return
+
+        conn = connect_db()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                query = """
+                    INSERT INTO pacientes (nombre, fecha_nacimiento, genero, direccion, telefono)
+                    VALUES (%s, %s, %s, %s, %s)
+                """
+                cursor.execute(query, (nombre, fecha_nacimiento, genero, direccion, telefono))
+                conn.commit()
+                messagebox.showinfo("Éxito", "Paciente añadido correctamente.")
+                window.destroy()
+                self.manage_patients()
+            except psycopg2.IntegrityError:
+                conn.rollback()
+                messagebox.showerror("Error", "El teléfono ingresado ya está en uso.")
+            except Exception as e:
+                conn.rollback()
+                messagebox.showerror("Error", f"No se pudo añadir el paciente: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+
+    def edit_patient(self, paciente):
+        edit_patient_window = tk.Toplevel(self.root)
+        edit_patient_window.title("Editar Paciente")
+        edit_patient_window.grab_set()  # Modal
+
+        fields = [
+            ("Nombre", 0, paciente[1]),
+            ("Fecha de Nacimiento (YYYY-MM-DD)", 1, paciente[2]),
+            ("Género", 2, paciente[3]),
+            ("Dirección", 3, paciente[4]),
+            ("Teléfono", 4, paciente[5])
+        ]
+
+        entries = {}
+        for label_text, row, value in fields:
+            tk.Label(edit_patient_window, text=label_text).grid(row=row, column=0, padx=10, pady=5, sticky=tk.E)
+            if label_text == "Género":
+                gender_var = tk.StringVar(edit_patient_window)
+                gender_var.set(value)
+                gender_dropdown = tk.OptionMenu(edit_patient_window, gender_var, "Masculino", "Femenino", "Otro")
+                gender_dropdown.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["genero"] = gender_var
+            else:
+                entry = tk.Entry(edit_patient_window)
+                entry.insert(0, value)
+                entry.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                key = label_text.split(" ")[0].lower()
+                entries[key] = entry
+
+        tk.Button(
+            edit_patient_window,
+            text="Guardar Cambios",
+            command=lambda: self.save_edited_patient(paciente[0], entries, edit_patient_window)
+        ).grid(row=len(fields), columnspan=2, pady=10)
+
+    def save_edited_patient(self, paciente_id, entries, window):
+        nombre = entries["nombre"].get().strip()
+        fecha_nacimiento = entries["fecha"].get().strip()
+        genero = entries["genero"].get()
+        direccion = entries["dirección"].get().strip()
+        telefono = entries["teléfono"].get().strip()
+
+        if not all([nombre, fecha_nacimiento, genero, direccion, telefono]):
+            messagebox.showwarning("Datos Faltantes", "Por favor, completa todos los campos.")
+            return
+
+        conn = connect_db()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                query = """
+                    UPDATE pacientes
+                    SET nombre=%s, fecha_nacimiento=%s, genero=%s, direccion=%s, telefono=%s
+                    WHERE id=%s
+                """
+                cursor.execute(query, (nombre, fecha_nacimiento, genero, direccion, telefono, paciente_id))
+                conn.commit()
+                messagebox.showinfo("Éxito", "Paciente actualizado correctamente.")
+                window.destroy()
+                self.manage_patients()
+            except psycopg2.IntegrityError:
+                conn.rollback()
+                messagebox.showerror("Error", "El teléfono ingresado ya está en uso.")
+            except Exception as e:
+                conn.rollback()
+                messagebox.showerror("Error", f"No se pudo actualizar el paciente: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+
+    def delete_patient(self, paciente_id):
+        confirm = messagebox.askyesno("Confirmación de Eliminación", "¿Está seguro de que desea eliminar este paciente?")
+        if confirm:
+            conn = connect_db()
+            if conn:
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM pacientes WHERE id=%s", (paciente_id,))
+                    conn.commit()
+                    messagebox.showinfo("Éxito", "Paciente eliminado correctamente.")
+                    self.manage_patients()
+                except Exception as e:
+                    conn.rollback()
+                    messagebox.showerror("Error", f"No se pudo eliminar el paciente: {str(e)}")
+                finally:
+                    cursor.close()
+                    conn.close()
 
 
 
