@@ -1,7 +1,9 @@
 import tkinter as tk
 from tkinter import messagebox
 import psycopg2
-
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from datetime import datetime
 
 def connect_db():
     try:
@@ -70,7 +72,7 @@ class CRUDApp:
         tk.Button(frame, text="Síntomas", command=self.manage_sintomas).pack(side=tk.LEFT)
         tk.Button(frame, text="Diagnósticos", command=self.manage_diagnosticos).pack(side=tk.LEFT)
         tk.Button(frame, text="Historial Médico", command=self.manage_historial_medico).pack(side=tk.LEFT)
-
+        tk.Button(frame, text="Dashboard", command=self.manage_dashboard).pack(side=tk.LEFT)
 
         # Display frame
         self.display_frame = tk.Frame(root)
@@ -1871,6 +1873,254 @@ class CRUDApp:
                     cursor.close()
                     conn.close()
 
+
+    def manage_dashboard(self):
+        self.clear_frame()
+        tk.Label(self.display_frame, text="Dashboard de Estadísticas", font=("Arial", 16)).pack(pady=10)
+
+        # Crear un Frame para las estadísticas generales
+        stats_frame = tk.Frame(self.display_frame)
+        stats_frame.pack(pady=10)
+
+        # Estadísticas Generales
+        stats = self.get_general_statistics()
+        for key, value in stats.items():
+            tk.Label(stats_frame, text=f"{key}: {value}", font=("Arial", 12)).pack(anchor='w')
+
+        # Distribución de Enfermedades
+        disease_counts = self.get_disease_distribution()
+        if disease_counts:
+            fig, ax = plt.subplots(figsize=(6,4))
+            diseases = list(disease_counts.keys())
+            counts = list(disease_counts.values())
+            ax.pie(counts, labels=diseases, autopct='%1.1f%%', startangle=140)
+            ax.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+
+            canvas = FigureCanvasTkAgg(fig, master=self.display_frame)  # A tk.DrawingArea.
+            canvas.draw()
+            canvas.get_tk_widget().pack(pady=10)
+        else:
+            tk.Label(self.display_frame, text="No hay datos para mostrar la distribución de enfermedades.", font=("Arial", 12)).pack()
+
+        # Diagnósticos Recientes
+        recent_diagnoses = self.get_recent_diagnoses()
+        if recent_diagnoses:
+            tk.Label(self.display_frame, text="Diagnósticos Recientes", font=("Arial", 14)).pack(pady=5)
+            for diag in recent_diagnoses:
+                diag_info = f"ID: {diag[0]}, Paciente: {diag[1]}, Médico: {diag[2]}, Enfermedad: {diag[3]}, Fecha: {diag[4]}, Tratamiento: {diag[5]}"
+                tk.Label(self.display_frame, text=diag_info, wraplength=700, justify=tk.LEFT).pack(anchor='w', padx=20)
+        else:
+            tk.Label(self.display_frame, text="No hay diagnósticos recientes.", font=("Arial", 12)).pack()
+
+        # Generar Reporte de Paciente
+        report_frame = tk.Frame(self.display_frame)
+        report_frame.pack(pady=20)
+
+        tk.Label(report_frame, text="Generar Reporte de Paciente", font=("Arial", 14)).pack(pady=5)
+        tk.Label(report_frame, text="Selecciona un Paciente:").pack()
+
+        # Obtener lista de pacientes
+        pacientes = self.get_all_pacientes()
+        paciente_var = tk.StringVar(report_frame)
+        paciente_options = [f"{paciente[0]} - {paciente[1]}" for paciente in pacientes]
+        if not paciente_options:
+            tk.Label(report_frame, text="No hay pacientes disponibles.", font=("Arial", 12)).pack()
+        else:
+            paciente_var.set(paciente_options[0])
+            paciente_dropdown = tk.OptionMenu(report_frame, paciente_var, *paciente_options)
+            paciente_dropdown.pack(pady=5)
+
+            tk.Button(report_frame, text="Generar Reporte", command=lambda: self.generate_patient_report(paciente_var.get())).pack(pady=10)
+
+    def get_general_statistics(self):
+        stats = {}
+        conn = connect_db()
+        if conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute("SELECT COUNT(*) FROM usuarios")
+                stats['Total Usuarios'] = cursor.fetchone()[0]
+
+                cursor.execute("SELECT COUNT(*) FROM medicos")
+                stats['Total Médicos'] = cursor.fetchone()[0]
+
+                cursor.execute("SELECT COUNT(*) FROM pacientes")
+                stats['Total Pacientes'] = cursor.fetchone()[0]
+
+                cursor.execute("SELECT COUNT(*) FROM enfermedades")
+                stats['Total Enfermedades'] = cursor.fetchone()[0]
+
+                cursor.execute("SELECT COUNT(*) FROM signos")
+                stats['Total Signos'] = cursor.fetchone()[0]
+
+                cursor.execute("SELECT COUNT(*) FROM sintomas")
+                stats['Total Síntomas'] = cursor.fetchone()[0]
+
+                cursor.execute("SELECT COUNT(*) FROM diagnosticos")
+                stats['Total Diagnósticos'] = cursor.fetchone()[0]
+
+                cursor.execute("SELECT COUNT(*) FROM historial_medico")
+                stats['Total Historiales Médicos'] = cursor.fetchone()[0]
+
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo obtener las estadísticas generales: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+        return stats
+
+    def get_disease_distribution(self):
+        distribution = {}
+        conn = connect_db()
+        if conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute("""
+                    SELECT e.nombre, COUNT(d.id)
+                    FROM diagnosticos d
+                    JOIN enfermedades e ON d.enfermedad_id = e.id
+                    GROUP BY e.nombre
+                """)
+                results = cursor.fetchall()
+                for row in results:
+                    distribution[row[0]] = row[1]
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo obtener la distribución de enfermedades: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+        return distribution
+
+    def get_recent_diagnoses(self, limit=5):
+        diagnoses = []
+        conn = connect_db()
+        if conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute("""
+                    SELECT d.id, p.nombre, u.nombre, e.nombre, d.fecha_diagnostico, d.tratamiento
+                    FROM diagnosticos d
+                    JOIN pacientes p ON d.paciente_id = p.id
+                    JOIN medicos m ON d.medico_id = m.id
+                    JOIN usuarios u ON m.usuario_id = u.id
+                    JOIN enfermedades e ON d.enfermedad_id = e.id
+                    ORDER BY d.fecha_diagnostico DESC
+                    LIMIT %s
+                """, (limit,))
+                diagnoses = cursor.fetchall()
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo obtener los diagnósticos recientes: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+        return diagnoses
+
+    def get_all_pacientes(self):
+        pacientes = []
+        conn = connect_db()
+        if conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute("SELECT id, nombre FROM pacientes ORDER BY nombre")
+                pacientes = cursor.fetchall()
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo obtener la lista de pacientes: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+        return pacientes
+
+    def generate_patient_report(self, paciente_selected):
+        if not paciente_selected:
+            messagebox.showwarning("Selección Vacía", "Por favor, selecciona un paciente para generar el reporte.")
+            return
+
+        paciente_id = int(paciente_selected.split(" - ")[0])
+
+        # Obtener detalles del paciente
+        paciente = None
+        conn = connect_db()
+        if conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute("""
+                    SELECT id, nombre, fecha_nacimiento, genero, direccion, telefono
+                    FROM pacientes
+                    WHERE id = %s
+                """, (paciente_id,))
+                paciente = cursor.fetchone()
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo obtener los detalles del paciente: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+
+        if not paciente:
+            messagebox.showerror("Error", "Paciente no encontrado.")
+            return
+
+        # Obtener el historial médico del paciente
+        historial = []
+        conn = connect_db()
+        if conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute("""
+                    SELECT h.id, d.fecha_diagnostico, e.nombre, d.tratamiento, h.fecha, h.observaciones
+                    FROM historial_medico h
+                    JOIN diagnosticos d ON h.diagnostico_id = d.id
+                    JOIN enfermedades e ON d.enfermedad_id = e.id
+                    WHERE h.paciente_id = %s
+                    ORDER BY h.fecha DESC
+                """, (paciente_id,))
+                historial = cursor.fetchall()
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo obtener el historial médico: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+
+        # Crear una nueva ventana para mostrar el reporte
+        report_window = tk.Toplevel(self.root)
+        report_window.title(f"Reporte de {paciente[1]}")
+        report_window.geometry("800x600")
+        report_window.grab_set()
+
+        # Información del Paciente
+        info_frame = tk.Frame(report_window)
+        info_frame.pack(pady=10, padx=10, anchor='w')
+
+        info_labels = [
+            f"ID: {paciente[0]}",
+            f"Nombre: {paciente[1]}",
+            f"Fecha de Nacimiento: {paciente[2].strftime('%Y-%m-%d')}",
+            f"Género: {paciente[3]}",
+            f"Dirección: {paciente[4]}",
+            f"Teléfono: {paciente[5]}"
+        ]
+
+        for info in info_labels:
+            tk.Label(info_frame, text=info, font=("Arial", 12)).pack(anchor='w')
+
+        # Historial Médico
+        historial_frame = tk.Frame(report_window)
+        historial_frame.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+
+        tk.Label(historial_frame, text="Historial Médico", font=("Arial", 14)).pack(anchor='w')
+
+        if historial:
+            for h in historial:
+                h_info = (
+                    f"Historial ID: {h[0]}, Fecha Diagnóstico: {h[1].strftime('%Y-%m-%d')}, "
+                    f"Enfermedad: {h[2]}, Tratamiento: {h[3]}, Fecha Historial: {h[4].strftime('%Y-%m-%d')}, "
+                    f"Observaciones: {h[5]}"
+                )
+                tk.Label(historial_frame, text=h_info, wraplength=750, justify=tk.LEFT).pack(anchor='w', pady=2)
+        else:
+            tk.Label(historial_frame, text="No hay historial médico disponible para este paciente.", font=("Arial", 12)).pack()
+
+        # Botón para Cerrar el Reporte
+        tk.Button(report_window, text="Cerrar", command=report_window.destroy).pack(pady=10)
 
 
     def clear_frame(self):
