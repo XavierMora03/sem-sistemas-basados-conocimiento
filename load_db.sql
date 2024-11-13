@@ -21,7 +21,7 @@ CREATE TABLE pacientes (
     fecha_nacimiento DATE,
     genero VARCHAR(10),
     direccion VARCHAR(150),
-    telefono VARCHAR(20) UNIQUE
+    telefono VARCHAR(20)
 );
 
 -- Create table for Diseases
@@ -113,3 +113,6 @@ INSERT INTO diagnosticos (paciente_id, medico_id, enfermedad_id, fecha_diagnosti
 INSERT INTO historial_medico (paciente_id, diagnostico_id, fecha, observaciones) VALUES
 (1, 1, '2024-10-12', 'Paciente estable con control de glucosa.'),
 (2, 2, '2024-10-13', 'Paciente en observación por migraña.');
+
+
+
