@@ -68,6 +68,7 @@ class CRUDApp:
         tk.Button(frame, text="Pacientes", command=self.manage_patients).pack(side=tk.LEFT)
         tk.Button(frame, text="Signos", command=self.manage_signos).pack(side=tk.LEFT)
         tk.Button(frame, text="Síntomas", command=self.manage_sintomas).pack(side=tk.LEFT)
+        tk.Button(frame, text="Diagnósticos", command=self.manage_diagnosticos).pack(side=tk.LEFT)
 
 
         # Display frame
@@ -1221,6 +1222,362 @@ class CRUDApp:
                 except Exception as e:
                     conn.rollback()
                     messagebox.showerror("Error", f"No se pudo eliminar el síntoma: {str(e)}")
+                finally:
+                    cursor.close()
+                    conn.close()
+
+
+
+
+    def manage_diagnosticos(self):
+        self.clear_frame()
+        tk.Label(self.display_frame, text="Gestión de Diagnósticos", font=("Arial", 16)).pack(pady=10)
+
+        conn = connect_db()
+        if conn:
+            cursor = conn.cursor()
+            try:
+                query = """
+                    SELECT diagnosticos.id, pacientes.nombre, usuarios.nombre, enfermedades.nombre, diagnosticos.fecha_diagnostico, diagnosticos.tratamiento
+                    FROM diagnosticos
+                    JOIN pacientes ON diagnosticos.paciente_id = pacientes.id
+                    JOIN medicos ON diagnosticos.medico_id = medicos.id
+                    JOIN usuarios ON medicos.usuario_id = usuarios.id
+                    JOIN enfermedades ON diagnosticos.enfermedad_id = enfermedades.id
+                """
+                cursor.execute(query)
+                diagnosticos = cursor.fetchall()
+
+                for diagnostico in diagnosticos:
+                    diagnostico_frame = tk.Frame(self.display_frame, borderwidth=1, relief=tk.SOLID)
+                    diagnostico_frame.pack(fill=tk.X, padx=10, pady=5)
+
+                    diagnostico_info = (
+                        f"ID: {diagnostico[0]}, Paciente: {diagnostico[1]}, Médico: {diagnostico[2]}, "
+                        f"Enfermedad: {diagnostico[3]}, Fecha: {diagnostico[4]}, Tratamiento: {diagnostico[5]}"
+                    )
+                    tk.Label(diagnostico_frame, text=diagnostico_info, anchor="w").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+
+                    tk.Button(diagnostico_frame, text="Editar", command=lambda d=diagnostico: self.edit_diagnostico(d)).pack(side=tk.RIGHT, padx=5)
+                    tk.Button(diagnostico_frame, text="Eliminar", command=lambda d=diagnostico: self.delete_diagnostico(d[0])).pack(side=tk.RIGHT)
+
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo obtener la lista de diagnósticos: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+
+        tk.Button(self.display_frame, text="Añadir Diagnóstico", command=self.add_diagnostico).pack(pady=10)
+
+    def add_diagnostico(self):
+        add_diagnostico_window = tk.Toplevel(self.root)
+        add_diagnostico_window.title("Añadir Diagnóstico")
+        add_diagnostico_window.grab_set()  # Modal
+
+        fields = [
+            ("Paciente", 0),
+            ("Médico", 1),
+            ("Enfermedad", 2),
+            ("Fecha de Diagnóstico (YYYY-MM-DD)", 3),
+            ("Tratamiento", 4)
+        ]
+
+        entries = {}
+        for label_text, row in fields:
+            tk.Label(add_diagnostico_window, text=label_text).grid(row=row, column=0, padx=10, pady=5, sticky=tk.E)
+            if label_text == "Paciente":
+                paciente_var = tk.StringVar(add_diagnostico_window)
+                # Obtener la lista de pacientes para seleccionar
+                conn = connect_db()
+                pacientes = []
+                if conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id, nombre FROM pacientes")
+                    pacientes = cursor.fetchall()
+                    cursor.close()
+                    conn.close()
+
+                paciente_options = [f"{paciente[0]} - {paciente[1]}" for paciente in pacientes]
+                if not paciente_options:
+                    messagebox.showwarning("Sin Pacientes", "No hay pacientes disponibles. Por favor, añade un paciente primero.")
+                    add_diagnostico_window.destroy()
+                    return
+
+                paciente_var.set(paciente_options[0])
+                paciente_dropdown = tk.OptionMenu(add_diagnostico_window, paciente_var, *paciente_options)
+                paciente_dropdown.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["paciente_id"] = paciente_var
+
+            elif label_text == "Médico":
+                medico_var = tk.StringVar(add_diagnostico_window)
+                # Obtener la lista de médicos para seleccionar
+                conn = connect_db()
+                medicos = []
+                if conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT medicos.id, usuarios.nombre 
+                        FROM medicos
+                        JOIN usuarios ON medicos.usuario_id = usuarios.id
+                    """)
+                    medicos = cursor.fetchall()
+                    cursor.close()
+                    conn.close()
+
+                medico_options = [f"{medico[0]} - {medico[1]}" for medico in medicos]
+                if not medico_options:
+                    messagebox.showwarning("Sin Médicos", "No hay médicos disponibles. Por favor, añade un médico primero.")
+                    add_diagnostico_window.destroy()
+                    return
+
+                medico_var.set(medico_options[0])
+                medico_dropdown = tk.OptionMenu(add_diagnostico_window, medico_var, *medico_options)
+                medico_dropdown.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["medico_id"] = medico_var
+
+            elif label_text == "Enfermedad":
+                enfermedad_var = tk.StringVar(add_diagnostico_window)
+                # Obtener la lista de enfermedades para seleccionar
+                conn = connect_db()
+                enfermedades = []
+                if conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id, nombre FROM enfermedades")
+                    enfermedades = cursor.fetchall()
+                    cursor.close()
+                    conn.close()
+
+                enfermedad_options = [f"{enf[0]} - {enf[1]}" for enf in enfermedades]
+                if not enfermedad_options:
+                    messagebox.showwarning("Sin Enfermedades", "No hay enfermedades disponibles. Por favor, añade una enfermedad primero.")
+                    add_diagnostico_window.destroy()
+                    return
+
+                enfermedad_var.set(enfermedad_options[0])
+                enfermedad_dropdown = tk.OptionMenu(add_diagnostico_window, enfermedad_var, *enfermedad_options)
+                enfermedad_dropdown.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["enfermedad_id"] = enfermedad_var
+
+            elif label_text == "Tratamiento":
+                tratamiento_text = tk.Text(add_diagnostico_window, width=40, height=5)
+                tratamiento_text.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["tratamiento"] = tratamiento_text
+
+            else:
+                entry = tk.Entry(add_diagnostico_window)
+                entry.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                key = label_text.split(" ")[0].lower()
+                entries[key] = entry
+
+        tk.Button(
+            add_diagnostico_window,
+            text="Guardar",
+            command=lambda: self.save_diagnostico(entries, add_diagnostico_window)
+        ).grid(row=len(fields), columnspan=2, pady=10)
+
+    def save_diagnostico(self, entries, window):
+        paciente_selected = entries["paciente_id"].get()
+        paciente_id = int(paciente_selected.split(" - ")[0])
+
+        medico_selected = entries["medico_id"].get()
+        medico_id = int(medico_selected.split(" - ")[0])
+
+        enfermedad_selected = entries["enfermedad_id"].get()
+        enfermedad_id = int(enfermedad_selected.split(" - ")[0])
+
+        fecha_diagnostico = entries["fecha"].get().strip()
+        tratamiento = entries["tratamiento"].get("1.0", tk.END).strip()
+
+        if not all([paciente_id, medico_id, enfermedad_id, fecha_diagnostico, tratamiento]):
+            messagebox.showwarning("Datos Faltantes", "Por favor, completa todos los campos.")
+            return
+
+        conn = connect_db()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                query = """
+                    INSERT INTO diagnosticos (paciente_id, medico_id, enfermedad_id, fecha_diagnostico, tratamiento)
+                    VALUES (%s, %s, %s, %s, %s)
+                """
+                cursor.execute(query, (paciente_id, medico_id, enfermedad_id, fecha_diagnostico, tratamiento))
+                conn.commit()
+                messagebox.showinfo("Éxito", "Diagnóstico añadido correctamente.")
+                window.destroy()
+                self.manage_diagnosticos()
+            except Exception as e:
+                conn.rollback()
+                messagebox.showerror("Error", f"No se pudo añadir el diagnóstico: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+
+    def edit_diagnostico(self, diagnostico):
+        edit_diagnostico_window = tk.Toplevel(self.root)
+        edit_diagnostico_window.title("Editar Diagnóstico")
+        edit_diagnostico_window.grab_set()  # Modal
+
+        fields = [
+            ("Paciente", 0, diagnostico[1]),
+            ("Médico", 1, diagnostico[2]),
+            ("Enfermedad", 2, diagnostico[3]),
+            ("Fecha de Diagnóstico (YYYY-MM-DD)", 3, diagnostico[4]),
+            ("Tratamiento", 4, diagnostico[5])
+        ]
+
+        entries = {}
+        for label_text, row, value in fields:
+            tk.Label(edit_diagnostico_window, text=label_text).grid(row=row, column=0, padx=10, pady=5, sticky=tk.E)
+            if label_text == "Paciente":
+                paciente_var = tk.StringVar(edit_diagnostico_window)
+                # Obtener la lista de pacientes para seleccionar
+                conn = connect_db()
+                pacientes = []
+                if conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id, nombre FROM pacientes")
+                    pacientes = cursor.fetchall()
+                    cursor.close()
+                    conn.close()
+
+                paciente_options = [f"{paciente[0]} - {paciente[1]}" for paciente in pacientes]
+                if not paciente_options:
+                    messagebox.showwarning("Sin Pacientes", "No hay pacientes disponibles. Por favor, añade un paciente primero.")
+                    edit_diagnostico_window.destroy()
+                    return
+
+                # Establecer el paciente actual como seleccionado
+                selected_paciente = next((f"{paciente[0]} - {paciente[1]}" for paciente in pacientes if paciente[1] == value), paciente_options[0])
+                paciente_var.set(selected_paciente)
+                paciente_dropdown = tk.OptionMenu(edit_diagnostico_window, paciente_var, *paciente_options)
+                paciente_dropdown.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["paciente_id"] = paciente_var
+
+            elif label_text == "Médico":
+                medico_var = tk.StringVar(edit_diagnostico_window)
+                # Obtener la lista de médicos para seleccionar
+                conn = connect_db()
+                medicos = []
+                if conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT medicos.id, usuarios.nombre 
+                        FROM medicos
+                        JOIN usuarios ON medicos.usuario_id = usuarios.id
+                    """)
+                    medicos = cursor.fetchall()
+                    cursor.close()
+                    conn.close()
+
+                medico_options = [f"{medico[0]} - {medico[1]}" for medico in medicos]
+                if not medico_options:
+                    messagebox.showwarning("Sin Médicos", "No hay médicos disponibles. Por favor, añade un médico primero.")
+                    edit_diagnostico_window.destroy()
+                    return
+
+                # Establecer el médico actual como seleccionado
+                selected_medico = next((f"{medico[0]} - {medico[1]}" for medico in medicos if medico[1] == value), medico_options[0])
+                medico_var.set(selected_medico)
+                medico_dropdown = tk.OptionMenu(edit_diagnostico_window, medico_var, *medico_options)
+                medico_dropdown.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["medico_id"] = medico_var
+
+            elif label_text == "Enfermedad":
+                enfermedad_var = tk.StringVar(edit_diagnostico_window)
+                # Obtener la lista de enfermedades para seleccionar
+                conn = connect_db()
+                enfermedades = []
+                if conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id, nombre FROM enfermedades")
+                    enfermedades = cursor.fetchall()
+                    cursor.close()
+                    conn.close()
+
+                enfermedad_options = [f"{enf[0]} - {enf[1]}" for enf in enfermedades]
+                if not enfermedad_options:
+                    messagebox.showwarning("Sin Enfermedades", "No hay enfermedades disponibles. Por favor, añade una enfermedad primero.")
+                    edit_diagnostico_window.destroy()
+                    return
+
+                # Establecer la enfermedad actual como seleccionada
+                selected_enfermedad = next((f"{enf[0]} - {enf[1]}" for enf in enfermedades if enf[1] == value), enfermedad_options[0])
+                enfermedad_var.set(selected_enfermedad)
+                enfermedad_dropdown = tk.OptionMenu(edit_diagnostico_window, enfermedad_var, *enfermedad_options)
+                enfermedad_dropdown.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["enfermedad_id"] = enfermedad_var
+
+            elif label_text == "Tratamiento":
+                tratamiento_text = tk.Text(edit_diagnostico_window, width=40, height=5)
+                tratamiento_text.insert("1.0", value)
+                tratamiento_text.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["tratamiento"] = tratamiento_text
+
+            else:
+                entry = tk.Entry(edit_diagnostico_window)
+                entry.insert(0, value)
+                entry.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                key = label_text.split(" ")[0].lower()
+                entries[key] = entry
+
+        tk.Button(
+            edit_diagnostico_window,
+            text="Guardar Cambios",
+            command=lambda: self.save_edited_diagnostico(diagnostico[0], entries, edit_diagnostico_window)
+        ).grid(row=len(fields), columnspan=2, pady=10)
+
+    def save_edited_diagnostico(self, diagnostico_id, entries, window):
+        paciente_selected = entries["paciente_id"].get()
+        paciente_id = int(paciente_selected.split(" - ")[0])
+
+        medico_selected = entries["medico_id"].get()
+        medico_id = int(medico_selected.split(" - ")[0])
+
+        enfermedad_selected = entries["enfermedad_id"].get()
+        enfermedad_id = int(enfermedad_selected.split(" - ")[0])
+
+        fecha_diagnostico = entries["fecha"].get().strip()
+        tratamiento = entries["tratamiento"].get("1.0", tk.END).strip()
+
+        if not all([paciente_id, medico_id, enfermedad_id, fecha_diagnostico, tratamiento]):
+            messagebox.showwarning("Datos Faltantes", "Por favor, completa todos los campos.")
+            return
+
+        conn = connect_db()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                query = """
+                    UPDATE diagnosticos
+                    SET paciente_id=%s, medico_id=%s, enfermedad_id=%s, fecha_diagnostico=%s, tratamiento=%s
+                    WHERE id=%s
+                """
+                cursor.execute(query, (paciente_id, medico_id, enfermedad_id, fecha_diagnostico, tratamiento, diagnostico_id))
+                conn.commit()
+                messagebox.showinfo("Éxito", "Diagnóstico actualizado correctamente.")
+                window.destroy()
+                self.manage_diagnosticos()
+            except Exception as e:
+                conn.rollback()
+                messagebox.showerror("Error", f"No se pudo actualizar el diagnóstico: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+
+    def delete_diagnostico(self, diagnostico_id):
+        confirm = messagebox.askyesno("Confirmación de Eliminación", "¿Está seguro de que desea eliminar este diagnóstico?")
+        if confirm:
+            conn = connect_db()
+            if conn:
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM diagnosticos WHERE id=%s", (diagnostico_id,))
+                    conn.commit()
+                    messagebox.showinfo("Éxito", "Diagnóstico eliminado correctamente.")
+                    self.manage_diagnosticos()
+                except Exception as e:
+                    conn.rollback()
+                    messagebox.showerror("Error", f"No se pudo eliminar el diagnóstico: {str(e)}")
                 finally:
                     cursor.close()
                     conn.close()
