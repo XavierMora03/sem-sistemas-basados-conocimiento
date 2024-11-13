@@ -69,6 +69,7 @@ class CRUDApp:
         tk.Button(frame, text="Signos", command=self.manage_signos).pack(side=tk.LEFT)
         tk.Button(frame, text="Síntomas", command=self.manage_sintomas).pack(side=tk.LEFT)
         tk.Button(frame, text="Diagnósticos", command=self.manage_diagnosticos).pack(side=tk.LEFT)
+        tk.Button(frame, text="Historial Médico", command=self.manage_historial_medico).pack(side=tk.LEFT)
 
 
         # Display frame
@@ -1581,6 +1582,295 @@ class CRUDApp:
                 finally:
                     cursor.close()
                     conn.close()
+
+
+    def manage_historial_medico(self):
+        self.clear_frame()
+        tk.Label(self.display_frame, text="Gestión de Historial Médico", font=("Arial", 16)).pack(pady=10)
+
+        conn = connect_db()
+        if conn:
+            cursor = conn.cursor()
+            try:
+                query = """
+                    SELECT historial_medico.id, pacientes.nombre, diagnosticos.id, diagnosticos.enfermedad_id, historial_medico.fecha, historial_medico.observaciones
+                    FROM historial_medico
+                    JOIN pacientes ON historial_medico.paciente_id = pacientes.id
+                    JOIN diagnosticos ON historial_medico.diagnostico_id = diagnosticos.id
+                """
+                cursor.execute(query)
+                historiales = cursor.fetchall()
+
+                for historial in historiales:
+                    historial_frame = tk.Frame(self.display_frame, borderwidth=1, relief=tk.SOLID)
+                    historial_frame.pack(fill=tk.X, padx=10, pady=5)
+
+                    historial_info = (
+                        f"ID: {historial[0]}, Paciente: {historial[1]}, Diagnóstico ID: {historial[2]}, "
+                        f"Enfermedad ID: {historial[3]}, Fecha: {historial[4]}, Observaciones: {historial[5]}"
+                    )
+                    tk.Label(historial_frame, text=historial_info, anchor="w", wraplength=700, justify=tk.LEFT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+
+                    tk.Button(historial_frame, text="Editar", command=lambda h=historial: self.edit_historial_medico(h)).pack(side=tk.RIGHT, padx=5)
+                    tk.Button(historial_frame, text="Eliminar", command=lambda h=historial: self.delete_historial_medico(h[0])).pack(side=tk.RIGHT)
+
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo obtener la lista de historiales médicos: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+
+        tk.Button(self.display_frame, text="Añadir Historial Médico", command=self.add_historial_medico).pack(pady=10)
+
+    def add_historial_medico(self):
+        add_historial_window = tk.Toplevel(self.root)
+        add_historial_window.title("Añadir Historial Médico")
+        add_historial_window.grab_set()  # Modal
+
+        fields = [
+            ("Paciente", 0),
+            ("Diagnóstico", 1),
+            ("Fecha (YYYY-MM-DD)", 2),
+            ("Observaciones", 3)
+        ]
+
+        entries = {}
+        for label_text, row in fields:
+            tk.Label(add_historial_window, text=label_text).grid(row=row, column=0, padx=10, pady=5, sticky=tk.E)
+            if label_text == "Paciente":
+                paciente_var = tk.StringVar(add_historial_window)
+                # Obtener la lista de pacientes para seleccionar
+                conn = connect_db()
+                pacientes = []
+                if conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id, nombre FROM pacientes")
+                    pacientes = cursor.fetchall()
+                    cursor.close()
+                    conn.close()
+
+                paciente_options = [f"{paciente[0]} - {paciente[1]}" for paciente in pacientes]
+                if not paciente_options:
+                    messagebox.showwarning("Sin Pacientes", "No hay pacientes disponibles. Por favor, añade un paciente primero.")
+                    add_historial_window.destroy()
+                    return
+
+                paciente_var.set(paciente_options[0])
+                paciente_dropdown = tk.OptionMenu(add_historial_window, paciente_var, *paciente_options)
+                paciente_dropdown.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["paciente_id"] = paciente_var
+
+            elif label_text == "Diagnóstico":
+                diagnostico_var = tk.StringVar(add_historial_window)
+                # Obtener la lista de diagnósticos para seleccionar
+                conn = connect_db()
+                diagnosticos = []
+                if conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id, paciente_id, enfermedad_id FROM diagnosticos")
+                    diagnosticos = cursor.fetchall()
+                    cursor.close()
+                    conn.close()
+
+                diagnostico_options = [f"{diagnostico[0]} - Paciente ID: {diagnostico[1]}, Enfermedad ID: {diagnostico[2]}" for diagnostico in diagnosticos]
+                if not diagnostico_options:
+                    messagebox.showwarning("Sin Diagnósticos", "No hay diagnósticos disponibles. Por favor, añade un diagnóstico primero.")
+                    add_historial_window.destroy()
+                    return
+
+                diagnostico_var.set(diagnostico_options[0])
+                diagnostico_dropdown = tk.OptionMenu(add_historial_window, diagnostico_var, *diagnostico_options)
+                diagnostico_dropdown.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["diagnostico_id"] = diagnostico_var
+
+            elif label_text == "Observaciones":
+                observaciones_text = tk.Text(add_historial_window, width=40, height=5)
+                observaciones_text.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["observaciones"] = observaciones_text
+
+            else:
+                entry = tk.Entry(add_historial_window)
+                entry.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                key = label_text.lower().replace(" ", "_")
+                entries[key] = entry
+
+        tk.Button(
+            add_historial_window,
+            text="Guardar",
+            command=lambda: self.save_historial_medico(entries, add_historial_window)
+        ).grid(row=len(fields), columnspan=2, pady=10)
+
+    def save_historial_medico(self, entries, window):
+        paciente_selected = entries["paciente_id"].get()
+        paciente_id = int(paciente_selected.split(" - ")[0])
+
+        diagnostico_selected = entries["diagnostico_id"].get()
+        diagnostico_id = int(diagnostico_selected.split(" - ")[0])
+
+        fecha = entries["fecha_(yyyy-mm-dd)"].get().strip()
+        observaciones = entries["observaciones"].get("1.0", tk.END).strip()
+
+        if not all([paciente_id, diagnostico_id, fecha, observaciones]):
+            messagebox.showwarning("Datos Faltantes", "Por favor, completa todos los campos.")
+            return
+
+        conn = connect_db()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                query = """
+                    INSERT INTO historial_medico (paciente_id, diagnostico_id, fecha, observaciones)
+                    VALUES (%s, %s, %s, %s)
+                """
+                cursor.execute(query, (paciente_id, diagnostico_id, fecha, observaciones))
+                conn.commit()
+                messagebox.showinfo("Éxito", "Historial Médico añadido correctamente.")
+                window.destroy()
+                self.manage_historial_medico()
+            except Exception as e:
+                conn.rollback()
+                messagebox.showerror("Error", f"No se pudo añadir el historial médico: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+
+    def edit_historial_medico(self, historial):
+        edit_historial_window = tk.Toplevel(self.root)
+        edit_historial_window.title("Editar Historial Médico")
+        edit_historial_window.grab_set()  # Modal
+
+        fields = [
+            ("Paciente", 0, historial[1]),
+            ("Diagnóstico", 1, historial[2]),
+            ("Fecha (YYYY-MM-DD)", 2, historial[4]),
+            ("Observaciones", 3, historial[5])
+        ]
+
+        entries = {}
+        for label_text, row, value in fields:
+            tk.Label(edit_historial_window, text=label_text).grid(row=row, column=0, padx=10, pady=5, sticky=tk.E)
+            if label_text == "Paciente":
+                paciente_var = tk.StringVar(edit_historial_window)
+                # Obtener la lista de pacientes para seleccionar
+                conn = connect_db()
+                pacientes = []
+                if conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id, nombre FROM pacientes")
+                    pacientes = cursor.fetchall()
+                    cursor.close()
+                    conn.close()
+
+                paciente_options = [f"{paciente[0]} - {paciente[1]}" for paciente in pacientes]
+                if not paciente_options:
+                    messagebox.showwarning("Sin Pacientes", "No hay pacientes disponibles. Por favor, añade un paciente primero.")
+                    edit_historial_window.destroy()
+                    return
+
+                # Establecer el paciente actual como seleccionado
+                selected_paciente = next((f"{paciente[0]} - {paciente[1]}" for paciente in pacientes if paciente[1] == value), paciente_options[0])
+                paciente_var.set(selected_paciente)
+                paciente_dropdown = tk.OptionMenu(edit_historial_window, paciente_var, *paciente_options)
+                paciente_dropdown.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["paciente_id"] = paciente_var
+
+            elif label_text == "Diagnóstico":
+                diagnostico_var = tk.StringVar(edit_historial_window)
+                # Obtener la lista de diagnósticos para seleccionar
+                conn = connect_db()
+                diagnosticos = []
+                if conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id, paciente_id, enfermedad_id FROM diagnosticos")
+                    diagnosticos = cursor.fetchall()
+                    cursor.close()
+                    conn.close()
+
+                diagnostico_options = [f"{diagnostico[0]} - Paciente ID: {diagnostico[1]}, Enfermedad ID: {diagnostico[2]}" for diagnostico in diagnosticos]
+                if not diagnostico_options:
+                    messagebox.showwarning("Sin Diagnósticos", "No hay diagnósticos disponibles. Por favor, añade un diagnóstico primero.")
+                    edit_historial_window.destroy()
+                    return
+
+                # Establecer el diagnóstico actual como seleccionado
+                selected_diagnostico = next((f"{diagnostico[0]} - Paciente ID: {diagnostico[1]}, Enfermedad ID: {diagnostico[2]}" for diagnostico in diagnosticos if diagnostico[0] == historial[2]), diagnostico_options[0])
+                diagnostico_var.set(selected_diagnostico)
+                diagnostico_dropdown = tk.OptionMenu(edit_historial_window, diagnostico_var, *diagnostico_options)
+                diagnostico_dropdown.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["diagnostico_id"] = diagnostico_var
+
+            elif label_text == "Observaciones":
+                observaciones_text = tk.Text(edit_historial_window, width=40, height=5)
+                observaciones_text.insert("1.0", value)
+                observaciones_text.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["observaciones"] = observaciones_text
+
+            else:
+                entry = tk.Entry(edit_historial_window)
+                entry.insert(0, value)
+                entry.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                key = label_text.lower().replace(" ", "_")
+                entries[key] = entry
+
+        tk.Button(
+            edit_historial_window,
+            text="Guardar Cambios",
+            command=lambda: self.save_edited_historial_medico(historial[0], entries, edit_historial_window)
+        ).grid(row=len(fields), columnspan=2, pady=10)
+
+    def save_edited_historial_medico(self, historial_id, entries, window):
+        paciente_selected = entries["paciente_id"].get()
+        paciente_id = int(paciente_selected.split(" - ")[0])
+
+        diagnostico_selected = entries["diagnostico_id"].get()
+        diagnostico_id = int(diagnostico_selected.split(" - ")[0])
+
+        fecha = entries["fecha_(yyyy-mm-dd)"].get().strip()
+        observaciones = entries["observaciones"].get("1.0", tk.END).strip()
+
+        if not all([paciente_id, diagnostico_id, fecha, observaciones]):
+            messagebox.showwarning("Datos Faltantes", "Por favor, completa todos los campos.")
+            return
+
+        conn = connect_db()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                query = """
+                    UPDATE historial_medico
+                    SET paciente_id=%s, diagnostico_id=%s, fecha=%s, observaciones=%s
+                    WHERE id=%s
+                """
+                cursor.execute(query, (paciente_id, diagnostico_id, fecha, observaciones, historial_id))
+                conn.commit()
+                messagebox.showinfo("Éxito", "Historial Médico actualizado correctamente.")
+                window.destroy()
+                self.manage_historial_medico()
+            except Exception as e:
+                conn.rollback()
+                messagebox.showerror("Error", f"No se pudo actualizar el historial médico: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+
+    def delete_historial_medico(self, historial_id):
+        confirm = messagebox.askyesno("Confirmación de Eliminación", "¿Está seguro de que desea eliminar este historial médico?")
+        if confirm:
+            conn = connect_db()
+            if conn:
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM historial_medico WHERE id=%s", (historial_id,))
+                    conn.commit()
+                    messagebox.showinfo("Éxito", "Historial Médico eliminado correctamente.")
+                    self.manage_historial_medico()
+                except Exception as e:
+                    conn.rollback()
+                    messagebox.showerror("Error", f"No se pudo eliminar el historial médico: {str(e)}")
+                finally:
+                    cursor.close()
+                    conn.close()
+
 
 
     def clear_frame(self):
