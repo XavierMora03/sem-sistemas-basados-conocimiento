@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import messagebox
 import psycopg2
 
-# Database connection
+
 def connect_db():
     try:
         conn = psycopg2.connect(
@@ -64,6 +64,8 @@ class CRUDApp:
         tk.Button(frame, text="Usuarios", command=self.manage_users).pack(side=tk.LEFT)
         tk.Button(frame, text="Pacientes", command=self.manage_patients).pack(side=tk.LEFT)
         tk.Button(frame, text="Enfermedades", command=self.manage_diseases).pack(side=tk.LEFT)
+        tk.Button(frame, text="Médicos", command=self.manage_medicos).pack(side=tk.LEFT)
+
 
         # Display frame
         self.display_frame = tk.Frame(root)
@@ -145,7 +147,7 @@ class CRUDApp:
 
         tk.Label(add_user_window, text="Rol").grid(row=2, column=0)
         role_var = tk.StringVar(add_user_window)
-        role_var.set("administrador")  # Set default role
+        role_var.set("medico")  # Set default role
         role_dropdown = tk.OptionMenu(add_user_window, role_var, "administrador", "medico")
         role_dropdown.grid(row=2, column=1)
 
@@ -166,7 +168,6 @@ class CRUDApp:
             conn.close()
             messagebox.showinfo("Success", "User added successfully!")
             self.manage_users()
-
 
     def manage_patients(self):
         self.clear_frame()
@@ -293,7 +294,297 @@ class CRUDApp:
 
     def manage_diseases(self):
         self.clear_frame()
-        tk.Label(self.display_frame, text="Disease Management").pack()
+        tk.Label(self.display_frame, text="Gestión de Enfermedades").pack()
+
+        try:
+            conn = connect_db()
+            if conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id, nombre, descripcion FROM enfermedades")
+                diseases = cursor.fetchall()
+
+                for disease in diseases:
+                    disease_frame = tk.Frame(self.display_frame)
+                    disease_frame.pack(fill=tk.X, padx=5, pady=5)
+
+                    disease_info = f"ID: {disease[0]}, Nombre: {disease[1]}, Descripción: {disease[2]}"
+                    tk.Label(disease_frame, text=disease_info).pack(side=tk.LEFT)
+
+                    tk.Button(disease_frame, text="Editar", command=lambda d=disease: self.edit_disease(d)).pack(side=tk.RIGHT, padx=5)
+                    tk.Button(disease_frame, text="Eliminar", command=lambda d=disease: self.delete_disease(d[0])).pack(side=tk.RIGHT)
+
+                cursor.close()
+                conn.close()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al conectarse a la base de datos: {str(e)}")
+
+        tk.Button(self.display_frame, text="Añadir Enfermedad", command=self.add_disease).pack(pady=10)
+
+    def add_disease(self):
+        add_disease_window = tk.Toplevel(self.root)
+        add_disease_window.title("Añadir Enfermedad")
+
+        tk.Label(add_disease_window, text="Nombre").grid(row=0, column=0)
+        name_entry = tk.Entry(add_disease_window)
+        name_entry.grid(row=0, column=1)
+
+        tk.Label(add_disease_window, text="Descripción").grid(row=1, column=0)
+        description_entry = tk.Entry(add_disease_window)
+        description_entry.grid(row=1, column=1)
+
+        tk.Button(add_disease_window, text="Guardar", command=lambda: self.save_disease(name_entry, description_entry)).grid(row=2, columnspan=2)
+
+
+    def edit_disease(self, disease):
+        edit_disease_window = tk.Toplevel(self.root)
+        edit_disease_window.title("Editar Enfermedad")
+
+        tk.Label(edit_disease_window, text="Nombre").grid(row=0, column=0)
+        name_entry = tk.Entry(edit_disease_window)
+        name_entry.insert(0, disease[1])
+        name_entry.grid(row=0, column=1)
+
+        tk.Label(edit_disease_window, text="Descripción").grid(row=1, column=0)
+        description_entry = tk.Entry(edit_disease_window)
+        description_entry.insert(0, disease[2])
+        description_entry.grid(row=1, column=1)
+
+        tk.Button(edit_disease_window, text="Guardar Cambios", command=lambda: self.save_edited_disease(disease[0], name_entry, description_entry)).grid(row=2, columnspan=2)
+
+    def save_edited_disease(self, disease_id, name_entry, description_entry):
+        nombre = name_entry.get().strip()
+        descripcion = description_entry.get().strip()
+
+        if not nombre or not descripcion:
+            messagebox.showwarning("Datos faltantes", "Por favor, complete todos los campos.")
+            return
+
+        try:
+            conn = connect_db()
+            if conn:
+                cursor = conn.cursor()
+                query = "UPDATE enfermedades SET nombre=%s, descripcion=%s WHERE id=%s"
+                cursor.execute(query, (nombre, descripcion, disease_id))
+                conn.commit()
+                cursor.close()
+                conn.close()
+                messagebox.showinfo("Éxito", "Enfermedad actualizada correctamente.")
+                self.manage_diseases()
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo actualizar la enfermedad: {str(e)}")
+
+    def save_disease(self, name_entry, description_entry):
+        nombre = name_entry.get().strip()
+        descripcion = description_entry.get().strip()
+
+        if not nombre or not descripcion:
+            messagebox.showwarning("Datos faltantes", "Por favor, complete todos los campos.")
+            return
+
+        try:
+            conn = connect_db()
+            if conn:
+                cursor = conn.cursor()
+                query = "INSERT INTO enfermedades (nombre, descripcion) VALUES (%s, %s)"
+                cursor.execute(query, (nombre, descripcion))
+                conn.commit()
+                cursor.close()
+                conn.close()
+                messagebox.showinfo("Éxito", "Enfermedad añadida correctamente.")
+                self.manage_diseases()
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo añadir la enfermedad: {str(e)}")
+
+    def delete_disease(self, disease_id):
+        confirm = messagebox.askyesno("Confirmación de Eliminación", "¿Está seguro de que desea eliminar esta enfermedad?")
+        if confirm:
+            try:
+                conn = connect_db()
+                if conn:
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM enfermedades WHERE id=%s", (disease_id,))
+                    conn.commit()
+                    cursor.close()
+                    conn.close()
+                    messagebox.showinfo("Éxito", "Enfermedad eliminada correctamente.")
+                    self.manage_diseases()
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo eliminar la enfermedad: {str(e)}")
+
+    #### MEdicos
+    def manage_medicos(self):
+        self.clear_frame()
+        tk.Label(self.display_frame, text="Gestión de Médicos").pack()
+
+        conn = connect_db()
+        if conn:
+            cursor = conn.cursor()
+            query = """
+                SELECT medicos.id, usuarios.nombre, usuarios.correo, medicos.especialidad
+                FROM medicos
+                JOIN usuarios ON medicos.usuario_id = usuarios.id
+            """
+            cursor.execute(query)
+            medicos = cursor.fetchall()
+
+            for medico in medicos:
+                medico_frame = tk.Frame(self.display_frame)
+                medico_frame.pack(fill=tk.X, padx=5, pady=5)
+
+                medico_info = f"ID: {medico[0]}, Nombre: {medico[1]}, Correo: {medico[2]}, Especialidad: {medico[3]}"
+                tk.Label(medico_frame, text=medico_info).pack(side=tk.LEFT)
+
+                tk.Button(medico_frame, text="Editar", command=lambda m=medico: self.edit_medico(m)).pack(side=tk.RIGHT, padx=5)
+                tk.Button(medico_frame, text="Eliminar", command=lambda m=medico: self.delete_medico(m[0])).pack(side=tk.RIGHT)
+
+            cursor.close()
+            conn.close()
+
+        tk.Button(self.display_frame, text="Añadir Médico", command=self.add_medico).pack(pady=10)
+
+    def add_medico(self):
+        add_medico_window = tk.Toplevel(self.root)
+        add_medico_window.title("Añadir Médico")
+
+        tk.Label(add_medico_window, text="Usuario").grid(row=0, column=0)
+        usuario_var = tk.StringVar(add_medico_window)
+        
+        # Obtener la lista de usuarios para seleccionar
+        conn = connect_db()
+        usuarios = []
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, nombre FROM usuarios")
+            usuarios = cursor.fetchall()
+            cursor.close()
+            conn.close()
+        
+        usuario_options = [f"{usuario[0]} - {usuario[1]}" for usuario in usuarios]
+        if not usuario_options:
+            messagebox.showwarning("Sin Usuarios", "No hay usuarios disponibles. Por favor, añade un usuario primero.")
+            add_medico_window.destroy()
+            return
+        
+        usuario_var.set(usuario_options[0])
+        usuario_dropdown = tk.OptionMenu(add_medico_window, usuario_var, *usuario_options)
+        usuario_dropdown.grid(row=0, column=1)
+
+        tk.Label(add_medico_window, text="Especialidad").grid(row=1, column=0)
+        especialidad_entry = tk.Entry(add_medico_window)
+        especialidad_entry.grid(row=1, column=1)
+
+        tk.Button(add_medico_window, text="Guardar", command=lambda: self.save_medico(usuario_var, especialidad_entry, add_medico_window)).grid(row=2, columnspan=2)
+
+    def save_medico(self, usuario_var, especialidad_entry, window):
+        usuario_selected = usuario_var.get()
+        usuario_id = int(usuario_selected.split(" - ")[0])
+        especialidad = especialidad_entry.get().strip()
+
+        if not especialidad:
+            messagebox.showwarning("Datos Faltantes", "Por favor, complete todos los campos.")
+            return
+
+        conn = connect_db()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                query = "INSERT INTO medicos (usuario_id, especialidad) VALUES (%s, %s)"
+                cursor.execute(query, (usuario_id, especialidad))
+                conn.commit()
+                cursor.close()
+                conn.close()
+                messagebox.showinfo("Éxito", "Médico añadido correctamente.")
+                window.destroy()
+                self.manage_medicos()
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo añadir el médico: {str(e)}")
+                conn.close()
+
+    def edit_medico(self, medico):
+        edit_medico_window = tk.Toplevel(self.root)
+        edit_medico_window.title("Editar Médico")
+
+        tk.Label(edit_medico_window, text="Usuario").grid(row=0, column=0)
+        usuario_var = tk.StringVar(edit_medico_window)
+        
+        # Obtener la lista de usuarios para seleccionar
+        conn = connect_db()
+        usuarios = []
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, nombre FROM usuarios")
+            usuarios = cursor.fetchall()
+            cursor.close()
+            conn.close()
+        
+        usuario_options = [f"{usuario[0]} - {usuario[1]}" for usuario in usuarios]
+        usuario_actual = f"{medico[1]} - {medico[2]}"
+        # Buscar el usuario correspondiente
+        selected_usuario = None
+        for usuario in usuarios:
+            if usuario[0] == medico[1]:
+                selected_usuario = f"{usuario[0]} - {usuario[1]}"
+                break
+        if selected_usuario:
+            usuario_var.set(selected_usuario)
+        else:
+            usuario_var.set(usuario_options[0])
+
+        usuario_dropdown = tk.OptionMenu(edit_medico_window, usuario_var, *usuario_options)
+        usuario_dropdown.grid(row=0, column=1)
+
+        tk.Label(edit_medico_window, text="Especialidad").grid(row=1, column=0)
+        especialidad_entry = tk.Entry(edit_medico_window)
+        especialidad_entry.insert(0, medico[3])
+        especialidad_entry.grid(row=1, column=1)
+
+        tk.Button(edit_medico_window, text="Guardar Cambios", command=lambda: self.save_edited_medico(medico[0], usuario_var, especialidad_entry, edit_medico_window)).grid(row=2, columnspan=2)
+
+    def save_edited_medico(self, medico_id, usuario_var, especialidad_entry, window):
+        usuario_selected = usuario_var.get()
+        usuario_id = int(usuario_selected.split(" - ")[0])
+        especialidad = especialidad_entry.get().strip()
+
+        if not especialidad:
+            messagebox.showwarning("Datos Faltantes", "Por favor, complete todos los campos.")
+            return
+
+        conn = connect_db()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                query = "UPDATE medicos SET usuario_id=%s, especialidad=%s WHERE id=%s"
+                cursor.execute(query, (usuario_id, especialidad, medico_id))
+                conn.commit()
+                cursor.close()
+                conn.close()
+                messagebox.showinfo("Éxito", "Médico actualizado correctamente.")
+                window.destroy()
+                self.manage_medicos()
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo actualizar el médico: {str(e)}")
+                conn.close()
+
+    def delete_medico(self, medico_id):
+        confirm = messagebox.askyesno("Confirmación de Eliminación", "¿Está seguro de que desea eliminar este médico?")
+        if confirm:
+            conn = connect_db()
+            if conn:
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM medicos WHERE id=%s", (medico_id,))
+                    conn.commit()
+                    cursor.close()
+                    conn.close()
+                    messagebox.showinfo("Éxito", "Médico eliminado correctamente.")
+                    self.manage_medicos()
+                except Exception as e:
+                    messagebox.showerror("Error", f"No se pudo eliminar el médico: {str(e)}")
+                    conn.close()
+
+
+
 
     def clear_frame(self):
         for widget in self.display_frame.winfo_children():
