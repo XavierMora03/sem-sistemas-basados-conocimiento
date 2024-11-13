@@ -66,6 +66,8 @@ class CRUDApp:
         tk.Button(frame, text="Enfermedades", command=self.manage_diseases).pack(side=tk.LEFT)
         tk.Button(frame, text="Médicos", command=self.manage_medicos).pack(side=tk.LEFT)
         tk.Button(frame, text="Pacientes", command=self.manage_patients).pack(side=tk.LEFT)
+        tk.Button(frame, text="Signos", command=self.manage_signos).pack(side=tk.LEFT)
+
 
         # Display frame
         self.display_frame = tk.Frame(root)
@@ -773,6 +775,230 @@ class CRUDApp:
                     cursor.close()
                     conn.close()
 
+
+    def manage_signos(self):
+        self.clear_frame()
+        tk.Label(self.display_frame, text="Gestión de Signos", font=("Arial", 16)).pack(pady=10)
+
+        conn = connect_db()
+        if conn:
+            cursor = conn.cursor()
+            try:
+                query = """
+                    SELECT signos.id, signos.nombre, signos.descripcion, enfermedades.nombre
+                    FROM signos
+                    JOIN enfermedades ON signos.enfermedad_id = enfermedades.id
+                """
+                cursor.execute(query)
+                signos = cursor.fetchall()
+
+                for signo in signos:
+                    signo_frame = tk.Frame(self.display_frame, borderwidth=1, relief=tk.SOLID)
+                    signo_frame.pack(fill=tk.X, padx=10, pady=5)
+
+                    signo_info = (
+                        f"ID: {signo[0]}, Nombre: {signo[1]}, "
+                        f"Descripción: {signo[2]}, Enfermedad: {signo[3]}"
+                    )
+                    tk.Label(signo_frame, text=signo_info, anchor="w").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+
+                    tk.Button(signo_frame, text="Editar", command=lambda s=signo: self.edit_signo(s)).pack(side=tk.RIGHT, padx=5)
+                    tk.Button(signo_frame, text="Eliminar", command=lambda s=signo: self.delete_signo(s[0])).pack(side=tk.RIGHT)
+
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo obtener la lista de signos: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+
+        tk.Button(self.display_frame, text="Añadir Signo", command=self.add_signo).pack(pady=10)
+
+    def add_signo(self):
+        add_signo_window = tk.Toplevel(self.root)
+        add_signo_window.title("Añadir Signo")
+        add_signo_window.grab_set()  # Modal
+
+        fields = [
+            ("Nombre", 0),
+            ("Descripción", 1),
+            ("Enfermedad", 2)
+        ]
+
+        entries = {}
+        for label_text, row in fields:
+            tk.Label(add_signo_window, text=label_text).grid(row=row, column=0, padx=10, pady=5, sticky=tk.E)
+            if label_text == "Enfermedad":
+                enfermedad_var = tk.StringVar(add_signo_window)
+                # Obtener la lista de enfermedades para seleccionar
+                conn = connect_db()
+                enfermedades = []
+                if conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id, nombre FROM enfermedades")
+                    enfermedades = cursor.fetchall()
+                    cursor.close()
+                    conn.close()
+
+                enfermedad_options = [f"{enf[0]} - {enf[1]}" for enf in enfermedades]
+                if not enfermedad_options:
+                    messagebox.showwarning("Sin Enfermedades", "No hay enfermedades disponibles. Por favor, añade una enfermedad primero.")
+                    add_signo_window.destroy()
+                    return
+
+                enfermedad_var.set(enfermedad_options[0])
+                enfermedad_dropdown = tk.OptionMenu(add_signo_window, enfermedad_var, *enfermedad_options)
+                enfermedad_dropdown.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["enfermedad_id"] = enfermedad_var
+            elif label_text == "Descripción":
+                descripcion_text = tk.Text(add_signo_window, width=40, height=5)
+                descripcion_text.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["descripcion"] = descripcion_text
+            else:
+                entry = tk.Entry(add_signo_window)
+                entry.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                key = label_text.lower()
+                entries[key] = entry
+
+        tk.Button(
+            add_signo_window,
+            text="Guardar",
+            command=lambda: self.save_signo(entries, add_signo_window)
+        ).grid(row=len(fields), columnspan=2, pady=10)
+
+    def save_signo(self, entries, window):
+        nombre = entries["nombre"].get().strip()
+        descripcion = entries["descripcion"].get("1.0", tk.END).strip()
+        enfermedad_selected = entries["enfermedad_id"].get()
+        enfermedad_id = int(enfermedad_selected.split(" - ")[0])
+
+        if not all([nombre, descripcion, enfermedad_id]):
+            messagebox.showwarning("Datos Faltantes", "Por favor, completa todos los campos.")
+            return
+
+        conn = connect_db()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                query = """
+                    INSERT INTO signos (nombre, descripcion, enfermedad_id)
+                    VALUES (%s, %s, %s)
+                """
+                cursor.execute(query, (nombre, descripcion, enfermedad_id))
+                conn.commit()
+                messagebox.showinfo("Éxito", "Signo añadido correctamente.")
+                window.destroy()
+                self.manage_signos()
+            except Exception as e:
+                conn.rollback()
+                messagebox.showerror("Error", f"No se pudo añadir el signo: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+
+    def edit_signo(self, signo):
+        edit_signo_window = tk.Toplevel(self.root)
+        edit_signo_window.title("Editar Signo")
+        edit_signo_window.grab_set()  # Modal
+
+        fields = [
+            ("Nombre", 0, signo[1]),
+            ("Descripción", 1, signo[2]),
+            ("Enfermedad", 2, signo[3])
+        ]
+
+        entries = {}
+        for label_text, row, value in fields:
+            tk.Label(edit_signo_window, text=label_text).grid(row=row, column=0, padx=10, pady=5, sticky=tk.E)
+            if label_text == "Enfermedad":
+                enfermedad_var = tk.StringVar(edit_signo_window)
+                # Obtener la lista de enfermedades para seleccionar
+                conn = connect_db()
+                enfermedades = []
+                if conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id, nombre FROM enfermedades")
+                    enfermedades = cursor.fetchall()
+                    cursor.close()
+                    conn.close()
+
+                enfermedad_options = [f"{enf[0]} - {enf[1]}" for enf in enfermedades]
+                if not enfermedad_options:
+                    messagebox.showwarning("Sin Enfermedades", "No hay enfermedades disponibles. Por favor, añade una enfermedad primero.")
+                    edit_signo_window.destroy()
+                    return
+
+                # Establecer la enfermedad actual como seleccionada
+                selected_enfermedad = next((f"{enf[0]} - {enf[1]}" for enf in enfermedades if enf[1] == value), enfermedad_options[0])
+                enfermedad_var.set(selected_enfermedad)
+                enfermedad_dropdown = tk.OptionMenu(edit_signo_window, enfermedad_var, *enfermedad_options)
+                enfermedad_dropdown.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["enfermedad_id"] = enfermedad_var
+            elif label_text == "Descripción":
+                descripcion_text = tk.Text(edit_signo_window, width=40, height=5)
+                descripcion_text.insert("1.0", value)
+                descripcion_text.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["descripcion"] = descripcion_text
+            else:
+                entry = tk.Entry(edit_signo_window)
+                entry.insert(0, value)
+                entry.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                key = label_text.lower()
+                entries[key] = entry
+
+        tk.Button(
+            edit_signo_window,
+            text="Guardar Cambios",
+            command=lambda: self.save_edited_signo(signo[0], entries, edit_signo_window)
+        ).grid(row=len(fields), columnspan=2, pady=10)
+
+    def save_edited_signo(self, signo_id, entries, window):
+        nombre = entries["nombre"].get().strip()
+        descripcion = entries["descripcion"].get("1.0", tk.END).strip()
+        enfermedad_selected = entries["enfermedad_id"].get()
+        enfermedad_id = int(enfermedad_selected.split(" - ")[0])
+
+        if not all([nombre, descripcion, enfermedad_id]):
+            messagebox.showwarning("Datos Faltantes", "Por favor, completa todos los campos.")
+            return
+
+        conn = connect_db()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                query = """
+                    UPDATE signos
+                    SET nombre=%s, descripcion=%s, enfermedad_id=%s
+                    WHERE id=%s
+                """
+                cursor.execute(query, (nombre, descripcion, enfermedad_id, signo_id))
+                conn.commit()
+                messagebox.showinfo("Éxito", "Signo actualizado correctamente.")
+                window.destroy()
+                self.manage_signos()
+            except Exception as e:
+                conn.rollback()
+                messagebox.showerror("Error", f"No se pudo actualizar el signo: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+
+    def delete_signo(self, signo_id):
+        confirm = messagebox.askyesno("Confirmación de Eliminación", "¿Está seguro de que desea eliminar este signo?")
+        if confirm:
+            conn = connect_db()
+            if conn:
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM signos WHERE id=%s", (signo_id,))
+                    conn.commit()
+                    messagebox.showinfo("Éxito", "Signo eliminado correctamente.")
+                    self.manage_signos()
+                except Exception as e:
+                    conn.rollback()
+                    messagebox.showerror("Error", f"No se pudo eliminar el signo: {str(e)}")
+                finally:
+                    cursor.close()
+                    conn.close()
 
 
     def clear_frame(self):
