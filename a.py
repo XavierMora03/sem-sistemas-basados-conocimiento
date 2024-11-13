@@ -67,6 +67,7 @@ class CRUDApp:
         tk.Button(frame, text="Médicos", command=self.manage_medicos).pack(side=tk.LEFT)
         tk.Button(frame, text="Pacientes", command=self.manage_patients).pack(side=tk.LEFT)
         tk.Button(frame, text="Signos", command=self.manage_signos).pack(side=tk.LEFT)
+        tk.Button(frame, text="Síntomas", command=self.manage_sintomas).pack(side=tk.LEFT)
 
 
         # Display frame
@@ -996,6 +997,230 @@ class CRUDApp:
                 except Exception as e:
                     conn.rollback()
                     messagebox.showerror("Error", f"No se pudo eliminar el signo: {str(e)}")
+                finally:
+                    cursor.close()
+                    conn.close()
+
+    def manage_sintomas(self):
+        self.clear_frame()
+        tk.Label(self.display_frame, text="Gestión de Síntomas", font=("Arial", 16)).pack(pady=10)
+
+        conn = connect_db()
+        if conn:
+            cursor = conn.cursor()
+            try:
+                query = """
+                    SELECT sintomas.id, sintomas.nombre, sintomas.descripcion, enfermedades.nombre
+                    FROM sintomas
+                    JOIN enfermedades ON sintomas.enfermedad_id = enfermedades.id
+                """
+                cursor.execute(query)
+                sintomas = cursor.fetchall()
+
+                for sintoma in sintomas:
+                    sintoma_frame = tk.Frame(self.display_frame, borderwidth=1, relief=tk.SOLID)
+                    sintoma_frame.pack(fill=tk.X, padx=10, pady=5)
+
+                    sintoma_info = (
+                        f"ID: {sintoma[0]}, Nombre: {sintoma[1]}, "
+                        f"Descripción: {sintoma[2]}, Enfermedad: {sintoma[3]}"
+                    )
+                    tk.Label(sintoma_frame, text=sintoma_info, anchor="w").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+
+                    tk.Button(sintoma_frame, text="Editar", command=lambda s=sintoma: self.edit_sintoma(s)).pack(side=tk.RIGHT, padx=5)
+                    tk.Button(sintoma_frame, text="Eliminar", command=lambda s=sintoma: self.delete_sintoma(s[0])).pack(side=tk.RIGHT)
+
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo obtener la lista de síntomas: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+
+        tk.Button(self.display_frame, text="Añadir Síntoma", command=self.add_sintoma).pack(pady=10)
+
+    def add_sintoma(self):
+        add_sintoma_window = tk.Toplevel(self.root)
+        add_sintoma_window.title("Añadir Síntoma")
+        add_sintoma_window.grab_set()  # Modal
+
+        fields = [
+            ("Nombre", 0),
+            ("Descripción", 1),
+            ("Enfermedad", 2)
+        ]
+
+        entries = {}
+        for label_text, row in fields:
+            tk.Label(add_sintoma_window, text=label_text).grid(row=row, column=0, padx=10, pady=5, sticky=tk.E)
+            if label_text == "Enfermedad":
+                enfermedad_var = tk.StringVar(add_sintoma_window)
+                # Obtener la lista de enfermedades para seleccionar
+                conn = connect_db()
+                enfermedades = []
+                if conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id, nombre FROM enfermedades")
+                    enfermedades = cursor.fetchall()
+                    cursor.close()
+                    conn.close()
+
+                enfermedad_options = [f"{enf[0]} - {enf[1]}" for enf in enfermedades]
+                if not enfermedad_options:
+                    messagebox.showwarning("Sin Enfermedades", "No hay enfermedades disponibles. Por favor, añade una enfermedad primero.")
+                    add_sintoma_window.destroy()
+                    return
+
+                enfermedad_var.set(enfermedad_options[0])
+                enfermedad_dropdown = tk.OptionMenu(add_sintoma_window, enfermedad_var, *enfermedad_options)
+                enfermedad_dropdown.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["enfermedad_id"] = enfermedad_var
+            elif label_text == "Descripción":
+                descripcion_text = tk.Text(add_sintoma_window, width=40, height=5)
+                descripcion_text.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["descripcion"] = descripcion_text
+            else:
+                entry = tk.Entry(add_sintoma_window)
+                entry.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                key = label_text.lower()
+                entries[key] = entry
+
+        tk.Button(
+            add_sintoma_window,
+            text="Guardar",
+            command=lambda: self.save_sintoma(entries, add_sintoma_window)
+        ).grid(row=len(fields), columnspan=2, pady=10)
+
+    def save_sintoma(self, entries, window):
+        nombre = entries["nombre"].get().strip()
+        descripcion = entries["descripcion"].get("1.0", tk.END).strip()
+        enfermedad_selected = entries["enfermedad_id"].get()
+        enfermedad_id = int(enfermedad_selected.split(" - ")[0])
+
+        if not all([nombre, descripcion, enfermedad_id]):
+            messagebox.showwarning("Datos Faltantes", "Por favor, completa todos los campos.")
+            return
+
+        conn = connect_db()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                query = """
+                    INSERT INTO sintomas (nombre, descripcion, enfermedad_id)
+                    VALUES (%s, %s, %s)
+                """
+                cursor.execute(query, (nombre, descripcion, enfermedad_id))
+                conn.commit()
+                messagebox.showinfo("Éxito", "Síntoma añadido correctamente.")
+                window.destroy()
+                self.manage_sintomas()
+            except Exception as e:
+                conn.rollback()
+                messagebox.showerror("Error", f"No se pudo añadir el síntoma: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+
+    def edit_sintoma(self, sintoma):
+        edit_sintoma_window = tk.Toplevel(self.root)
+        edit_sintoma_window.title("Editar Síntoma")
+        edit_sintoma_window.grab_set()  # Modal
+
+        fields = [
+            ("Nombre", 0, sintoma[1]),
+            ("Descripción", 1, sintoma[2]),
+            ("Enfermedad", 2, sintoma[3])
+        ]
+
+        entries = {}
+        for label_text, row, value in fields:
+            tk.Label(edit_sintoma_window, text=label_text).grid(row=row, column=0, padx=10, pady=5, sticky=tk.E)
+            if label_text == "Enfermedad":
+                enfermedad_var = tk.StringVar(edit_sintoma_window)
+                # Obtener la lista de enfermedades para seleccionar
+                conn = connect_db()
+                enfermedades = []
+                if conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id, nombre FROM enfermedades")
+                    enfermedades = cursor.fetchall()
+                    cursor.close()
+                    conn.close()
+
+                enfermedad_options = [f"{enf[0]} - {enf[1]}" for enf in enfermedades]
+                if not enfermedad_options:
+                    messagebox.showwarning("Sin Enfermedades", "No hay enfermedades disponibles. Por favor, añade una enfermedad primero.")
+                    edit_sintoma_window.destroy()
+                    return
+
+                # Establecer la enfermedad actual como seleccionada
+                selected_enfermedad = next((f"{enf[0]} - {enf[1]}" for enf in enfermedades if enf[1] == value), enfermedad_options[0])
+                enfermedad_var.set(selected_enfermedad)
+                enfermedad_dropdown = tk.OptionMenu(edit_sintoma_window, enfermedad_var, *enfermedad_options)
+                enfermedad_dropdown.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["enfermedad_id"] = enfermedad_var
+            elif label_text == "Descripción":
+                descripcion_text = tk.Text(edit_sintoma_window, width=40, height=5)
+                descripcion_text.insert("1.0", value)
+                descripcion_text.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                entries["descripcion"] = descripcion_text
+            else:
+                entry = tk.Entry(edit_sintoma_window)
+                entry.insert(0, value)
+                entry.grid(row=row, column=1, padx=10, pady=5, sticky=tk.W)
+                key = label_text.lower()
+                entries[key] = entry
+
+        tk.Button(
+            edit_sintoma_window,
+            text="Guardar Cambios",
+            command=lambda: self.save_edited_sintoma(sintoma[0], entries, edit_sintoma_window)
+        ).grid(row=len(fields), columnspan=2, pady=10)
+
+    def save_edited_sintoma(self, sintoma_id, entries, window):
+        nombre = entries["nombre"].get().strip()
+        descripcion = entries["descripcion"].get("1.0", tk.END).strip()
+        enfermedad_selected = entries["enfermedad_id"].get()
+        enfermedad_id = int(enfermedad_selected.split(" - ")[0])
+
+        if not all([nombre, descripcion, enfermedad_id]):
+            messagebox.showwarning("Datos Faltantes", "Por favor, completa todos los campos.")
+            return
+
+        conn = connect_db()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                query = """
+                    UPDATE sintomas
+                    SET nombre=%s, descripcion=%s, enfermedad_id=%s
+                    WHERE id=%s
+                """
+                cursor.execute(query, (nombre, descripcion, enfermedad_id, sintoma_id))
+                conn.commit()
+                messagebox.showinfo("Éxito", "Síntoma actualizado correctamente.")
+                window.destroy()
+                self.manage_sintomas()
+            except Exception as e:
+                conn.rollback()
+                messagebox.showerror("Error", f"No se pudo actualizar el síntoma: {str(e)}")
+            finally:
+                cursor.close()
+                conn.close()
+
+    def delete_sintoma(self, sintoma_id):
+        confirm = messagebox.askyesno("Confirmación de Eliminación", "¿Está seguro de que desea eliminar este síntoma?")
+        if confirm:
+            conn = connect_db()
+            if conn:
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM sintomas WHERE id=%s", (sintoma_id,))
+                    conn.commit()
+                    messagebox.showinfo("Éxito", "Síntoma eliminado correctamente.")
+                    self.manage_sintomas()
+                except Exception as e:
+                    conn.rollback()
+                    messagebox.showerror("Error", f"No se pudo eliminar el síntoma: {str(e)}")
                 finally:
                     cursor.close()
                     conn.close()
